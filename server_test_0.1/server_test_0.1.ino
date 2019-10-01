@@ -2,7 +2,7 @@
 
 //SSID of your network
 char ssid[] = "slynet"; //SSID of your Wi-Fi router
-char pass[] = "321tenyls"; //Password of your Wi-Fi router
+char pass[] = "password"; //Password of your Wi-Fi router
 WiFiServer server(1337);
 WiFiClient client;
 
