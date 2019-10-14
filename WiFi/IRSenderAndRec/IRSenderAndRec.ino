@@ -93,20 +93,32 @@ void loop() {
   
   int hex = 0;
 
+  
+  // Send through all LEDs.
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(0x01);
+  Wire.endTransmission();
+  hex = 0x01;
+  sendAndRecIR(hex);
+  
+
+ 
+  /*
   // Enable first.
 
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x11);
+  Wire.write(0x10);
   Wire.endTransmission();
   hex = 0x01;
   sendAndRecIR(hex);
 
-
+  
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x21);
+  Wire.write(0x20);
   Wire.endTransmission();
   hex = 0x02;
   sendAndRecIR(hex);
@@ -115,7 +127,7 @@ void loop() {
   // Enable third.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x41);
+  Wire.write(0x40);
   Wire.endTransmission();
   hex = 0x03;
   sendAndRecIR(hex);
@@ -125,16 +137,18 @@ void loop() {
   
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x81);
+  Wire.write(0x80);
   Wire.endTransmission();
   hex = 0x04;
   sendAndRecIR(hex);
-  
-  
+ 
+*/
+ 
 }
 
 void sendAndRecIR(int hex) {
   //Serial.println("NEC");
+  
   irsend.sendNEC(hex);
   delay(500);
   
