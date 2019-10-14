@@ -83,13 +83,9 @@ Wire.write(0x00);
 Wire.write(0x00);
 Wire.endTransmission();
 
-
-
 }
 
 void loop() {
-
-
   
   int hex = 0;
 
@@ -102,11 +98,8 @@ void loop() {
   hex = 0x01;
   sendAndRecIR(hex);
   
-
- 
   /*
   // Enable first.
-
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
   Wire.write(0x10);
@@ -118,11 +111,7 @@ void loop() {
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-<<<<<<< HEAD
   Wire.write(0x22);
-=======
-  Wire.write(0x20);
->>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
   hex = 0x02;
   sendAndRecIR(hex);
@@ -131,35 +120,22 @@ void loop() {
   // Enable third.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-<<<<<<< HEAD
   Wire.write(0x44);
-=======
-  Wire.write(0x40);
->>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
   hex = 0x03;
   sendAndRecIR(hex);
 
 
   // Enable fourth.
-  
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-<<<<<<< HEAD
   Wire.write(0x88);
-=======
-  Wire.write(0x80);
->>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
   hex = 0x04;
   sendAndRecIR(hex);
- 
-<<<<<<< HEAD
-  
-=======
+
 */
  
->>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
 }
 
 void sendAndRecIR(int hex) {
