@@ -1,4 +1,4 @@
-
+int words;
 
 void dispWifi(){
     // by default, we'll generate the high voltage from the 3.3v line internally! (neat!)

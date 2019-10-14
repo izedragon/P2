@@ -106,7 +106,7 @@ void loop() {
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x21);
+  Wire.write(0x22);
   Wire.endTransmission();
   hex = 0x02;
   sendAndRecIR(hex);
@@ -115,7 +115,7 @@ void loop() {
   // Enable third.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x41);
+  Wire.write(0x44);
   Wire.endTransmission();
   hex = 0x03;
   sendAndRecIR(hex);
@@ -125,11 +125,11 @@ void loop() {
   
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x81);
+  Wire.write(0x88);
   Wire.endTransmission();
   hex = 0x04;
   sendAndRecIR(hex);
-  
+ 
   
 }
 

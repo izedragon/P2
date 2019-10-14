@@ -3,8 +3,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
  
- 
- #include <ESP8266WiFi.h>
+#include <ESP8266WiFi.h>
 
 
 // SCL GPIO5
@@ -21,19 +20,21 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define LOGO16_GLCD_HEIGHT 16
 #define LOGO16_GLCD_WIDTH  16
 
- 
 //Testtest
 //SSID of your network
-char ssid[] = "MAU"; //SSID of your Wi-Fi router
-char pass[] = "12345678"; //Password of your Wi-Fi router
- 
+extern char ssid[] = "MAU"; //SSID of your Wi-Fi router
+extern char pass[] = "12345678"; //Password of your Wi-Fi router
+
 WiFiServer server(80);
 
-void setup()
-{
+extern int words;
+
+// This method try to connect to a router who calls MAU
+// Servercon try to connect a server that are aktiv
+void setup(){
   Serial.begin(115200);
   delay(10);
-
+  
   // Connect to Wi-Fi network
   Serial.println();
   Serial.println();
@@ -48,8 +49,9 @@ void setup()
   }
   Serial.println("");
   Serial.println("Wi-Fi connected successfully");
-  //WiFi.disconnect();
-  dispWifi();  
+  //WiFi.disconnect(); // disconnect wifi to router
+
+  dispWifi();
 
     // Start the server
   server.begin();
@@ -60,16 +62,20 @@ void setup()
   Serial.print("http://");
   Serial.print(WiFi.localIP());
   Serial.println("/");
-  dispServer();
+
 }
 
 void loop() {
+  
+  dispServer();
+  
   // Check if a client has connected
   WiFiClient client = server.available();
   if (!client) {
     return;
   }
- 
+  
+
   // Wait until the client sends some data
   Serial.println("new client");
   while(!client.available()){
@@ -79,7 +85,7 @@ void loop() {
   // Read the first line of the request
   String request = client.readStringUntil('\r');
   Serial.println(request);
-  client.flush();
+  client.flush(); //disconnect server
  
   // Match the request
  
@@ -92,7 +98,7 @@ void loop() {
     dispL();
     value = LOW;
   }
- 
+  delay(1000);
  
  
   // Return the response
