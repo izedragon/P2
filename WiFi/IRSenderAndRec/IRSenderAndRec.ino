@@ -54,19 +54,12 @@ int SDLU = 4;
 int slaveAddress = 0x20;
 
 const uint16_t kIrLed = 14;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
-
 IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
-
 // An IR detector/demodulator is connected to GPIO pin 14(D5 on a NodeMCU
 // board).
 const uint16_t kRecvPin = 13;
-
 IRrecv irrecv(kRecvPin);
-
 decode_results results;
-
-
-
 void setup() {
   Wire.begin(SDLU, SCLU);
   irsend.begin();
@@ -83,58 +76,90 @@ Wire.write(0x00);
 Wire.write(0x00);
 Wire.endTransmission();
 
-
-
 }
-
 void loop() {
-
-
-  
   int hex = 0;
 
+<<<<<<< HEAD
+  // Enable first. West VANSTER FUNKAR
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(0x00);
+=======
+  
+  // Send through all LEDs.
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(0x01);
+  Wire.endTransmission();
+  hex = 0x01;
+  sendAndRecIR(hex);
+  
+
+ 
+  /*
   // Enable first.
 
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x11);
+  Wire.write(0x10);
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
   hex = 0x01;
   sendAndRecIR(hex);
 
-
+<<<<<<< HEAD
+ /*
+  // Enable second. South Soder, FUNKAR
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(0x22);
+=======
+  
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x21);
+  Wire.write(0x20);
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
-  hex = 0x02;
+  hex = 0x22;
   sendAndRecIR(hex);
-
-
-  // Enable third.
+    
+  // Enable third. EAST, HOGER, FUNKAR
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x41);
+<<<<<<< HEAD
+  Wire.write(0x44);
+=======
+  Wire.write(0x40);
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
-  hex = 0x03;
+  hex = 0x33;
   sendAndRecIR(hex);
-
-
-  // Enable fourth.
   
+  // Enable fourth. NORTH, NORR, FUNKAR   
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x81);
+<<<<<<< HEAD
+  Wire.write(0x88); //88 sända och skicka, 08 endast ta emot, 80 endast sända. 
+  Wire.endTransmission();
+  hex = 0x44;
+  sendAndRecIR(hex); 
+*/
+=======
+  Wire.write(0x80);
   Wire.endTransmission();
   hex = 0x04;
   sendAndRecIR(hex);
-  
-  
+ 
+*/
+ 
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
 }
 
 void sendAndRecIR(int hex) {
   //Serial.println("NEC");
+  
   irsend.sendNEC(hex);
   delay(500);
   
