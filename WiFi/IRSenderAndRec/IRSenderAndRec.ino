@@ -93,20 +93,36 @@ void loop() {
   
   int hex = 0;
 
-  // Enable first.
-
+  
+  // Send through all LEDs.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
   Wire.write(0x11);
   Wire.endTransmission();
   hex = 0x01;
   sendAndRecIR(hex);
+  
 
+ 
+  /*
+  // Enable first.
 
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(0x10);
+  Wire.endTransmission();
+  hex = 0x01;
+  sendAndRecIR(hex);
+
+  
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
+<<<<<<< HEAD
   Wire.write(0x22);
+=======
+  Wire.write(0x20);
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
   hex = 0x02;
   sendAndRecIR(hex);
@@ -115,7 +131,11 @@ void loop() {
   // Enable third.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
+<<<<<<< HEAD
   Wire.write(0x44);
+=======
+  Wire.write(0x40);
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
   hex = 0x03;
   sendAndRecIR(hex);
@@ -125,16 +145,26 @@ void loop() {
   
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
+<<<<<<< HEAD
   Wire.write(0x88);
+=======
+  Wire.write(0x80);
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
   Wire.endTransmission();
   hex = 0x04;
   sendAndRecIR(hex);
  
+<<<<<<< HEAD
   
+=======
+*/
+ 
+>>>>>>> 78ecbb27dbe50140aaa0246795c2a925e47b3f8b
 }
 
 void sendAndRecIR(int hex) {
   //Serial.println("NEC");
+  
   irsend.sendNEC(hex);
   delay(500);
   
