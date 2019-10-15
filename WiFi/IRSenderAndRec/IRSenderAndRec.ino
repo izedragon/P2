@@ -90,12 +90,22 @@ void loop() {
   int hex = 0;
 
   
-  // Send through all LEDs.
+// Send through all LEDs.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
   Wire.write(0x0F);
   Wire.endTransmission();
   delay(200);
+  hex = 0x01;
+  sendAndRecIR(hex);
+  
+  /*
+  // Enable first.
+
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(0x10);
+  Wire.endTransmission();
   hex = 0x01;
   sendAndRecIR(hex);
   
@@ -108,19 +118,23 @@ void loop() {
   hex = 0x01;
   sendAndRecIR(hex);
 
-<<<<<<< HEAD
 /*
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
   Wire.write(0x20);
-=======
+
   
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
   Wire.write(0x22);
->>>>>>> c24bb6bb475be87f777c30f206e4025e0312a8d6
+
+  
+  // Enable second.
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(0x22);
   Wire.endTransmission();
   hex = 0x02;
   sendAndRecIR(hex);
@@ -129,11 +143,12 @@ void loop() {
   // Enable third.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-<<<<<<< HEAD
+
   Wire.write(0x40);
-=======
+
   Wire.write(0x44);
->>>>>>> c24bb6bb475be87f777c30f206e4025e0312a8d6
+
+  Wire.write(0x44);
   Wire.endTransmission();
   hex = 0x03;
   sendAndRecIR(hex);
@@ -142,7 +157,7 @@ void loop() {
   // Enable fourth.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-<<<<<<< HEAD
+
   Wire.write(0x80);
   Wire.endTransmission();
   hex = 0x04;
@@ -157,12 +172,16 @@ void sendAndRecIR(int hex) {
 //  delay(500);
 //  Serial.println(hex);
 //  delay(100);
-=======
+
   Wire.write(0x88);
   Wire.endTransmission();
   hex = 0x04;
   sendAndRecIR(hex);
 
+  Wire.write(0x88);
+  Wire.endTransmission();
+  hex = 0x04;
+  sendAndRecIR(hex);
 */
  
 }
@@ -172,7 +191,6 @@ void sendAndRecIR(int hex) {
   
   irsend.sendNEC(hex);
   delay(500);
->>>>>>> c24bb6bb475be87f777c30f206e4025e0312a8d6
   
   if (irrecv.decode(&results)) {
     // print() & println() can't handle printing long longs. (uint64_t)
