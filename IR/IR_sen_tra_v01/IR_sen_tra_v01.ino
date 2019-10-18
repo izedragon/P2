@@ -1,3 +1,4 @@
+
 /* IRremoteESP8266: IRsendDemo - demonstrates sending IR codes with IRsend.
  *
  * Version 1.1 January, 2019
@@ -59,7 +60,7 @@ IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
 
 // An IR detector/demodulator is connected to GPIO pin 14(D5 on a NodeMCU
 // board).
-const uint16_t kRecvPin = 12;
+const uint16_t kRecvPin = 13;
 
 IRrecv irrecv(kRecvPin);
 
@@ -83,58 +84,30 @@ Wire.write(0x00);
 Wire.write(0x00);
 Wire.endTransmission();
 
+
+
 }
 
 void loop() {
+
+
   
   int hex = 0;
 
-  
-// Send through all LEDs.
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(0x09);
-  Wire.write(0x0F);
-  Wire.endTransmission();
-  delay(200);
-  hex = 0x01;
-  sendAndRecIR(hex);
-  
-  /*
   // Enable first.
 
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x10);
-  Wire.endTransmission();
-  hex = 0x01;
-  sendAndRecIR(hex);
-  
-  /*
-  // Enable first.
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(0x09);
-  Wire.write(0x10);
+  Wire.write(0x11);
   Wire.endTransmission();
   hex = 0x01;
   sendAndRecIR(hex);
 
-/*
-  // Enable second.
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(0x09);
-  Wire.write(0x20);
 
-  
   // Enable second.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x22);
-
-  
-  // Enable second.
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(0x09);
-  Wire.write(0x22);
+  Wire.write(0x21);
   Wire.endTransmission();
   hex = 0x02;
   sendAndRecIR(hex);
@@ -143,52 +116,26 @@ void loop() {
   // Enable third.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-
-  Wire.write(0x40);
-
-  Wire.write(0x44);
-
-  Wire.write(0x44);
+  Wire.write(0x41);
   Wire.endTransmission();
   hex = 0x03;
   sendAndRecIR(hex);
 
 
   // Enable fourth.
+  
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-
-  Wire.write(0x80);
+  Wire.write(0x81);
   Wire.endTransmission();
   hex = 0x04;
   sendAndRecIR(hex);
-*/
   
-}
-
-void sendAndRecIR(int hex) {
-//  Serial.println("NEC");
-// irsend.sendNEC(hex);
-//  delay(500);
-//  Serial.println(hex);
-//  delay(100);
-
-  Wire.write(0x88);
-  Wire.endTransmission();
-  hex = 0x04;
-  sendAndRecIR(hex);
-
-  Wire.write(0x88);
-  Wire.endTransmission();
-  hex = 0x04;
-  sendAndRecIR(hex);
-*/
- 
+  
 }
 
 void sendAndRecIR(int hex) {
   //Serial.println("NEC");
-  
   irsend.sendNEC(hex);
   delay(500);
   
@@ -199,6 +146,5 @@ void sendAndRecIR(int hex) {
     results.value = 0;
     irrecv.resume();  // Receive the next value
   }
-  
-  delay(500);
+  delay(100);
 }
