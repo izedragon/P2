@@ -90,10 +90,9 @@ Wire.endTransmission();
 void loop() {
   
   int hex = 0;
-<<<<<<< HEAD
+
   char* TRdirection;
   String TRdir;
-=======
 
   
 // Send through all LEDs.
@@ -114,7 +113,6 @@ void loop() {
   Wire.endTransmission();
   hex = 0x01;
   sendAndRecIR(hex);
->>>>>>> 3b9508a88bb67307fb2ee4213b55cb1eab468882
   
   // 0xTR. T = transmitter, R = reciever
   Wire.beginTransmission(slaveAddress);
@@ -166,7 +164,6 @@ void loop() {
 void sendAndRecIR(int hex, char* TRdirection) {
 =======
 void sendAndRecIR(int hex) {
->>>>>>> 3b9508a88bb67307fb2ee4213b55cb1eab468882
   //Serial.println("NEC");
   /*
   irsend.sendNEC(hex);
@@ -182,11 +179,12 @@ void sendAndRecIR(int hex) {
     results.value = 0;
     irrecv.resume();  // Receive the next value
   }
-<<<<<<< HEAD
+
   
   //delay(300);
 =======
+=======
   */
   delay(500);
->>>>>>> 3b9508a88bb67307fb2ee4213b55cb1eab468882
+
 }
