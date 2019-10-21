@@ -51,7 +51,9 @@ int OLAT = 0x0A;
 int SCLU = 5;
 int SDLU = 4;
 
-int slaveAddress = 0x20;
+int slaveAddress = 0x40;
+
+int time_delay = 3000;
 
 const uint16_t kIrLed = 14;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
 
@@ -59,7 +61,7 @@ IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
 
 // An IR detector/demodulator is connected to GPIO pin 14(D5 on a NodeMCU
 // board).
-const uint16_t kRecvPin = 12;
+const uint16_t kRecvPin = 13;
 
 IRrecv irrecv(kRecvPin);
 
@@ -88,12 +90,16 @@ Wire.endTransmission();
 void loop() {
   
   int hex = 0;
+<<<<<<< HEAD
+  char* TRdirection;
+  String TRdir;
+=======
 
   
 // Send through all LEDs.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x0F);
+  Wire.write(0x80);
   Wire.endTransmission();
   delay(200);
   hex = 0x01;
@@ -108,97 +114,79 @@ void loop() {
   Wire.endTransmission();
   hex = 0x01;
   sendAndRecIR(hex);
+>>>>>>> 3b9508a88bb67307fb2ee4213b55cb1eab468882
   
-  /*
-  // Enable first.
+  // 0xTR. T = transmitter, R = reciever
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x10);
+  Wire.write(0x01);
   Wire.endTransmission();
   hex = 0x01;
-  sendAndRecIR(hex);
+  TRdir = "West - ";
+  TRdirection = "WEST - ";
+  sendAndRecIR(hex, TRdirection);
+  delay(time_delay);
 
-/*
-  // Enable second.
+ 
+  // Enable T/R.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x20);
-
-  
-  // Enable second.
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(0x09);
-  Wire.write(0x22);
-
-  
-  // Enable second.
-  Wire.beginTransmission(slaveAddress);
-  Wire.write(0x09);
-  Wire.write(0x22);
+  Wire.write(0x02);
   Wire.endTransmission();
   hex = 0x02;
-  sendAndRecIR(hex);
+  TRdirection = "SOUTH - ";
+  sendAndRecIR(hex, TRdirection);
+  delay(time_delay);
 
-
-  // Enable third.
+  // Enable T/R.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-
-  Wire.write(0x40);
-
-  Wire.write(0x44);
-
-  Wire.write(0x44);
+  Wire.write(0x04);
   Wire.endTransmission();
   hex = 0x03;
-  sendAndRecIR(hex);
+  TRdirection = "EAST - ";
+  sendAndRecIR(hex, TRdirection);
+  delay(time_delay);
 
-
-  // Enable fourth.
+  // Enable T/R.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-
-  Wire.write(0x80);
+  Wire.write(0x08);
   Wire.endTransmission();
   hex = 0x04;
-  sendAndRecIR(hex);
-*/
+  TRdirection = "NORTH - ";
+  sendAndRecIR(hex, TRdirection);
+  delay(time_delay);
   
 }
 
+
+
+<<<<<<< HEAD
+void sendAndRecIR(int hex, char* TRdirection) {
+=======
 void sendAndRecIR(int hex) {
-//  Serial.println("NEC");
-// irsend.sendNEC(hex);
-//  delay(500);
-//  Serial.println(hex);
-//  delay(100);
-
-  Wire.write(0x88);
-  Wire.endTransmission();
-  hex = 0x04;
-  sendAndRecIR(hex);
-
-  Wire.write(0x88);
-  Wire.endTransmission();
-  hex = 0x04;
-  sendAndRecIR(hex);
-*/
- 
-}
-
-void sendAndRecIR(int hex) {
+>>>>>>> 3b9508a88bb67307fb2ee4213b55cb1eab468882
   //Serial.println("NEC");
-  
+  /*
   irsend.sendNEC(hex);
-  delay(500);
+  delay(100);
+  */
   
+  /*
   if (irrecv.decode(&results)) {
     // print() & println() can't handle printing long longs. (uint64_t)
+    Serial.print(TRdirection);
     serialPrintUint64(results.value, HEX);
     Serial.println("");
     results.value = 0;
     irrecv.resume();  // Receive the next value
   }
+<<<<<<< HEAD
   
+  //delay(300);
+=======
+  */
   delay(500);
+>>>>>>> 3b9508a88bb67307fb2ee4213b55cb1eab468882
 }
