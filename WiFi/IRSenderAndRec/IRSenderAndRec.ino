@@ -59,7 +59,7 @@ IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
 
 // An IR detector/demodulator is connected to GPIO pin 14(D5 on a NodeMCU
 // board).
-const uint16_t kRecvPin = 12;
+const uint16_t kRecvPin = 13;
 
 IRrecv irrecv(kRecvPin);
 
@@ -93,7 +93,7 @@ void loop() {
 // Send through all LEDs.
   Wire.beginTransmission(slaveAddress);
   Wire.write(0x09);
-  Wire.write(0x0F);
+  Wire.write(0x08);
   Wire.endTransmission();
   delay(200);
   hex = 0x01;
@@ -166,31 +166,12 @@ void loop() {
   
 }
 
-void sendAndRecIR(int hex) {
-//  Serial.println("NEC");
-// irsend.sendNEC(hex);
-//  delay(500);
-//  Serial.println(hex);
-//  delay(100);
-
-  Wire.write(0x88);
-  Wire.endTransmission();
-  hex = 0x04;
-  sendAndRecIR(hex);
-
-  Wire.write(0x88);
-  Wire.endTransmission();
-  hex = 0x04;
-  sendAndRecIR(hex);
-*/
- 
-}
 
 void sendAndRecIR(int hex) {
   //Serial.println("NEC");
   
-  irsend.sendNEC(hex);
-  delay(500);
+  //irsend.sendNEC(hex);
+  //delay(500);
   
   if (irrecv.decode(&results)) {
     // print() & println() can't handle printing long longs. (uint64_t)
@@ -200,5 +181,5 @@ void sendAndRecIR(int hex) {
     irrecv.resume();  // Receive the next value
   }
   
-  delay(500);
+  delay(100);
 }
