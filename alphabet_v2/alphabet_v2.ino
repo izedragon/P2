@@ -1,10 +1,26 @@
 #include <SPI.h>
-#include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
+// String
+#include <string>
+// IR and I2C.
+
+#include <IRremoteESP8266.h>
+#include <IRsend.h>
+#include <Wire.h>
+#include <IRrecv.h>
+#include <IRutils.h>
+#include <Adafruit_MCP23008.h>
+
+// MCP variables.
+
+Adafruit_MCP23008 mcp;
+
 // SCL GPIO5
 // SDA GPIO4
+
+// Variables related to the D1 Mini OLED Display.
 #define OLED_RESET 0  // GPIO0
 Adafruit_SSD1306 display(OLED_RESET);
 
@@ -17,15 +33,68 @@ Adafruit_SSD1306 display(OLED_RESET);
 #define LOGO16_GLCD_HEIGHT 16
 #define LOGO16_GLCD_WIDTH  16
 
+#define irNorth 7
+#define irEast 6
+#define irSouth 5
+#define irWest 4
+
+#define recvNorth 3
+#define recvEast 2
+#define recvSouth 1
+#define recvWest 0
+
+// Variables related to the communication with the MCP23008 I/O Expander.
+
+int IODIR = 0x00;
+int IPOL = 0x01;
+int GPINTEN = 0x02;
+int DEFVAL = 0x03;
+int INTCON = 0x04;
+int IOCON = 0x05;
+int GPPU = 0x06;
+int INTF = 0x07;
+int INTCAP = 0x08;
+int GPIO = 0x09;
+int OLAT = 0x0A;
+
+int SCLU = 5;
+int SDLU = 4;
+
 enum StateM_enum {ConnectWiFi, ConnectServer, SendServer, RegisterServer, LetterServer, CheckServer,
                   ReciveServer, IRBroadcastEW, IRListenEW, IRTransmitDataE, IRReceiveDataE, IRReciveDataWE,
                   IRTransmitDataW, IRReceiveDataW
                  };
-
-void statemachine();
 int condition = 0;
-enum StateM_enum state = ConnectWiFi;
+enum StateM_enum state = IRListenEW;
 extern String disptext;
+void statemachine();
+
+// Variables related to the directions of sending and receiving.
+
+int directionsRec [4] = {0, 1, 2, 3};
+String directionsStr [4] = {"WEST", "SOUTH", "EAST", "NORTH"};
+int directionsSend [4] = {4, 5, 6, 7};
+int amountOfDirections = 4;
+int whatToSend[4] = {0x00, 0x01, 0x02, 0x03};
+
+
+
+// Variables related to the library which enables us to send and receive.
+
+int slaveAddress = 0x20;
+int IRReceived = 0;
+const uint16_t kIrLed = 14;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
+
+IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
+
+// An IR detector/demodulator is connected to GPIO pin 14(D5 on a NodeMCU
+// board).
+const uint16_t kRecvPin = 13;
+
+IRrecv irrecv(kRecvPin);
+
+decode_results results;
+
 
 /*
   boolean registered;
@@ -49,25 +118,32 @@ extern String disptext;
 
 
 void setup() {
-  Serial.begin(115200);
-  delay(10);
+  Wire.begin(SDLU, SCLU);
+  irsend.begin();
+#if ESP8266
+  Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
+#else  // ESP8266
+  Serial.begin(115200, SERIAL_8N1);
+#endif  // ESP8266
+
+  irrecv.enableIRIn();  // Start the receiver
+
+  mcp.begin();
+  for (int i = 0; i < 8; i++) {
+    mcp.pinMode(i, OUTPUT);
+  }
 }
 
 void loop() {
   statemachine();
-  delay(10);
 }
 
 void statemachine()
 {
-  if (Serial.available() > 0) {
-    //Serial.println(state);
-    condition = 0;
-    condition = Serial.parseInt();
-
-    switch (state)
-    {
-      case ConnectWiFi:
+  switch (state)
+  {
+    case ConnectWiFi:
+      {
         disptext = "ConnectWiFi";
         disp();
         Serial.println("ConnectWiFi");
@@ -83,8 +159,9 @@ void statemachine()
           state = ConnectServer;
         }
         break;
-
-      case ConnectServer:
+      }
+    case ConnectServer:
+      {
         disptext = "ConnectServer";
         disp();
         Serial.println("ConnectServer");
@@ -100,8 +177,9 @@ void statemachine()
           state = ConnectServer;
         }
         break;
-
-      case SendServer:
+      }
+    case SendServer:
+      {
         disptext = "SendServer";
         disp();
         Serial.println("SendServer");
@@ -122,32 +200,36 @@ void statemachine()
           state = CheckServer;
         }
         break;
-
-      case RegisterServer:
+      }
+    case RegisterServer:
+      {
         disptext = "RegisterServer";
         disp();
         Serial.println("RegisterServer");
         //Serial.println("RegisterServer-ReciveServer");
         state = ReciveServer;
         break;
-
-      case LetterServer:
+      }
+    case LetterServer:
+      {
         disptext = "LetterServer";
         disp();
         Serial.println("LetterServer");
         //Serial.println("LetterServer-ReciveServer");
         state = ReciveServer;
         break;
-
-      case CheckServer:
+      }
+    case CheckServer:
+      {
         disptext = "CheckServer";
         disp();
         Serial.println("CheckServer");
         //Serial.println("CheckServer-ReciveServer");
         state = ReciveServer;
         break;
-
-      case ReciveServer:
+      }
+    case ReciveServer:
+      {
         disptext = "ReciveServer";
         disp();
         Serial.println("ReciveServer");
@@ -173,57 +255,68 @@ void statemachine()
           state = IRBroadcastEW;
         }
         break;
+      }
+    case IRBroadcastEW:
+      {
 
-      case IRBroadcastEW:
-        disptext = "IRBroadcastEW";
-        disp();
         Serial.println("IRBroadcastEW");
-        if (condition == 10) {
-          //disptext = "IRBroadcastEW-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRBroadcastEW-IRBroadcastEW");
-          state = IRBroadcastEW;
-        } else if (condition == 11) {
-          //disptext = "IRBroadcastEW-IRListenEW";
-          //disp();
-          //Serial.println("IRBroadcastEW-IRListenEW");
-          state = IRListenEW;
+        for (int i = 0; i < amountOfDirections; i++) {
+          mcp.digitalWrite(directionsSend[i], HIGH);
+          delay(500);
+          sendIR(whatToSend[i]);
+          mcp.digitalWrite(directionsSend[i], LOW);
         }
-        break;
 
-      case IRListenEW:
-        disptext = "IRListenEW";
-        disp();
+        break;
+      }
+    case IRListenEW:
+      {
+        int received = 0;
         Serial.println("IRListenEW");
-        if (condition == 12) {
+
+
+        for (int i = 0; i < amountOfDirections; i++) {
+          mcp.digitalWrite(directionsRec[i], HIGH);
+          delay(500);
+          received = recIR();
+          mcp.digitalWrite(directionsRec[i], LOW);
+          if (received != 0) {
+            Serial.print("DirRec " + directionsStr[i] + " WhatRec: ");
+            Serial.println(intToStr(received));
+          }
+        }
+        /*
+          if (condition == 12) {
           //disptext = "IRListenEW-IRListenEW";
           //disp();
           //Serial.println("IRListenEW-IRListenEW");
           state = IRListenEW;
-        } else if (condition == 13) {
+          } else if (condition == 13) {
           //disptext = "IRListenEW-IRBroadcastEW";
           //disp();
           //Serial.println("IRListenEW-IRBroadcastEW");
           state = IRBroadcastEW;
-        } else if (condition == 14) {
+          } else if (condition == 14) {
           //disptext = "IRListenEW-IRTransmitDataE";
           //disp();
           //Serial.println("IRListenEW-IRTransmitDataE");
           state = IRTransmitDataE;
-        } else if (condition == 15) {
+          } else if (condition == 15) {
           //disptext = "IRListenEW-IRTransmitDataW";
           //disp();
           //Serial.println("IRListenEW-IRTransmitDataW");
           state = IRTransmitDataW;
-        } else if (condition == 16) {
+          } else if (condition == 16) {
           //disptext = "IRListenEW-IRReciveDataWE";
           //disp();
           //Serial.println("IRListenEW-IRReciveDataWE");
           state = IRReciveDataWE;
-        }
+          }
+        */
         break;
-
-      case IRTransmitDataE:
+      }
+    case IRTransmitDataE:
+      {
         disptext = "IRTransmitDataE";
         disp();
         Serial.println("IRTransmitDataE");
@@ -244,8 +337,9 @@ void statemachine()
           state = IRReceiveDataE;
         }
         break;
-
-      case IRReceiveDataE:
+      }
+    case IRReceiveDataE:
+      {
         disptext = "IRReceiveDataE";
         disp();
         Serial.println("IRReceiveDataE");
@@ -266,8 +360,9 @@ void statemachine()
           state = IRBroadcastEW;
         }
         break;
-
-      case IRReciveDataWE:
+      }
+    case IRReciveDataWE:
+      {
         disptext = "IRReciveDataWE";
         disp();
         Serial.println("IRReciveDataWE");
@@ -293,8 +388,9 @@ void statemachine()
           state = IRBroadcastEW;
         }
         break;
-
-      case IRTransmitDataW:
+      }
+    case IRTransmitDataW:
+      {
         disptext = "IRTransmitDataW";
         disp();
         Serial.println("IRTransmitDataW");
@@ -310,8 +406,9 @@ void statemachine()
           state = IRReceiveDataW;
         }
         break;
-
-      case IRReceiveDataW:
+      }
+    case IRReceiveDataW:
+      {
         disptext = "IRReceiveDataW";
         disp();
         Serial.println("IRReceiveDataW");
@@ -337,6 +434,25 @@ void statemachine()
           state = IRBroadcastEW;
         }
         break;
-    }
+      }
   }
+
+}
+
+String intToStr(int received) {
+  String returnStr = "";
+
+  if(received == 0x00) {
+    returnStr = "WEST";
+  } else if(received == 0x01) {
+    returnStr = "SOUTH";
+  } else if(received == 0x02) {
+    returnStr = "EAST";
+  } else if(received == 0x03) {
+    returnStr = "NORTH";
+  } else {
+    returnStr = "0";
+  }
+
+  return returnStr;
 }
