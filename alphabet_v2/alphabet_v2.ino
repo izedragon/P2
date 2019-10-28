@@ -13,35 +13,35 @@
 #include <IRutils.h>
 #include <Adafruit_MCP23008.h>
 
-// MCP variables.
+//Utilities variables.
+#include "utilities.h"
 
-Adafruit_MCP23008 mcp;
+// Display variables.
+
+#include "Display.h"
+
+// WiFi variables.
+
+#include "WiFi.h"
+
+// Display variables.
+
+#include "Display.h"
+
+// IRSender variables.
+
+#include "IRSender.h"
+
+// IRRec variables.
+
+#include "IRRec.h"
 
 // SCL GPIO5
 // SDA GPIO4
 
 // Variables related to the D1 Mini OLED Display.
-#define OLED_RESET 0  // GPIO0
+#define OLED_RESET 0 // GPIO0
 Adafruit_SSD1306 display(OLED_RESET);
-
-#define NUMFLAKES 10
-#define XPOS 0
-#define YPOS 1
-#define DELTAY 2
-
-
-#define LOGO16_GLCD_HEIGHT 16
-#define LOGO16_GLCD_WIDTH  16
-
-#define irNorth 7
-#define irEast 6
-#define irSouth 5
-#define irWest 4
-
-#define recvNorth 3
-#define recvEast 2
-#define recvSouth 1
-#define recvWest 0
 
 // Variables related to the communication with the MCP23008 I/O Expander.
 
@@ -60,32 +60,43 @@ int OLAT = 0x0A;
 int SCLU = 5;
 int SDLU = 4;
 
-enum StateM_enum {ConnectWiFi, ConnectServer, SendServer, RegisterServer, LetterServer, CheckServer,
-                  ReciveServer, IRBroadcastEW, IRListenEW, IRTransmitDataE, IRReceiveDataE, IRReciveDataWE,
-                  IRTransmitDataW, IRReceiveDataW
-                 };
-int condition = 0;
-enum StateM_enum state = IRListenEW;
-extern String disptext;
-void statemachine();
+enum States
+{
+  ConnectWiFi,
+  ConnectServer,
+  SendServer,
+  RegisterServer,
+  ResetState,
+  LetterServer,
+  CheckServer,
+  ReceiveServer,
+  IRBroadcastEW,
+  IRTransmitAndReceiveDataE,
+  IRTransmitAndReceiveDataWE,
+  IRTransmitAndReceiveDataW,
+};
+enum States state = IRBroadcastEW;
 
 // Variables related to the directions of sending and receiving.
 
-int directionsRec [4] = {0, 1, 2, 3};
-String directionsStr [4] = {"WEST", "SOUTH", "EAST", "NORTH"};
-int directionsSend [4] = {4, 5, 6, 7};
-int amountOfDirections = 4;
-int whatToSend[4] = {0x00, 0x01, 0x02, 0x03};
+String directionsStrEW[2] = {"WEST", "EAST"};
 
+int directionsRecEW[2] = {0x01, 0x04};  // WEST, EAST
+int directionsSendEW[2] = {0x10, 0x40}; // WEST, EAST
+int amountOfDirectionsEW = 2;           // 2
+// Variables related to the neighbors that the node has and it's role.
 
+int neighbours[3] = {0, 0, 0};
+int sizeOfNeighbours = 3;
+String role = "None";
 
 // Variables related to the library which enables us to send and receive.
 
 int slaveAddress = 0x20;
 int IRReceived = 0;
-const uint16_t kIrLed = 14;  // ESP8266 GPIO pin to use. Recommended: 4 (D2).
+const uint16_t kIrLed = 14; // ESP8266 GPIO pin to use. Recommended: 4 (D2).
 
-IRsend irsend(kIrLed);  // Set the GPIO to be used to sending the message.
+IRsend irsend(kIrLed); // Set the GPIO to be used to sending the message.
 
 // An IR detector/demodulator is connected to GPIO pin 14(D5 on a NodeMCU
 // board).
@@ -95,46 +106,72 @@ IRrecv irrecv(kRecvPin);
 
 decode_results results;
 
+// Router credentials
+const char *ssid = "MAU";
+const char *pass = "12345678";
 
-/*
-  boolean registered;
-  boolean letterSet;
-  boolean isMaster;
-  boolean received;
-  boolean messageType;
-  boolean setLetter;
-  boolean letterSett;
-  boolean wordResult;
-  boolean timeOut;
-  boolean eastOnly;
-  boolean westOnly;
-  boolean eastAndWest;
-  boolean winState;
-  boolean isRelay;
-  boolean isEnd;
-  boolean dirWest;
-  boolean dirEast;
-*/
+// Server credentials
+const char *host = "192.168.0.2";
+const uint16_t port = 1337;
 
+// WiFi client & server
+WiFiClient client;
+WiFiServer server(port);
 
-void setup() {
+// Strings used for messages
+String displayLetter = "?";
+String checkWord = "S"; // <<<------ "A" temp. set for testing, should be empty
+String serverMessage = "";
+
+// State machine booleans related to roles.
+boolean registered = false;
+boolean letterSet = false;
+boolean serverMessageReceived = false;
+boolean isMaster = false;
+boolean isRelay = false;
+boolean isEnd = false;
+boolean winState = false;
+
+// Timeout variables (ms)
+#define SERVER_RECEIVE_TIMEOUT 1000
+unsigned long timeout;
+
+void setup()
+{
   Wire.begin(SDLU, SCLU);
   irsend.begin();
 #if ESP8266
   Serial.begin(115200, SERIAL_8N1, SERIAL_TX_ONLY);
 #else  // ESP8266
   Serial.begin(115200, SERIAL_8N1);
-#endif  // ESP8266
+#endif // ESP8266
 
-  irrecv.enableIRIn();  // Start the receiver
+  irrecv.enableIRIn(); // Start the receiver
 
-  mcp.begin();
-  for (int i = 0; i < 8; i++) {
-    mcp.pinMode(i, OUTPUT);
-  }
+  // Setup the MCP.
+
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x00);
+  Wire.write(0x00);
+  Wire.endTransmission();
+
+  // Server setup.
+ // server.begin();
+
+  // Display setup.
+  
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // initialize with the I2C addr 0x3C (for the 64x48)
+  /*
+  invertDisplay(false, display);
+  dispLetter(displayLetter, display);
+  */
+  // Initiate random generator.
+
+  randomSeed(analogRead(0));
 }
 
-void loop() {
+void loop()
+{
   statemachine();
 }
 
@@ -142,317 +179,687 @@ void statemachine()
 {
   switch (state)
   {
-    case ConnectWiFi:
+  case ConnectWiFi:
+  {
+    if (WiFi.status() != WL_CONNECTED)
+    {
+      WiFiConnect(ssid, pass);
+      state = ConnectServer;
+    }
+    else
+    {
+      state = ConnectServer;
+    }
+    ServerConnect(host, port);
+    break;
+  }
+  case ConnectServer:
+  {
+    if (!client.connect(host, port))
+    {
+      Serial.print(".");
+      delay(200);
+      state = ConnectServer;
+    }
+    else
+    {
+      Serial.println("");
+      Serial.println("Connected to server.");
+      state = SendServer;
+    }
+    break;
+  }
+  case SendServer:
+  {
+    if (!registered)
+    {
+      state = RegisterServer;
+    }
+    else if (winState)
+    {
+      state = ResetState;
+    }
+    else if (registered && !letterSet)
+    {
+      state = LetterServer;
+    }
+    else if (registered && letterSet && isMaster)
+    {
+      state = CheckServer;
+    }
+    else
+    {
+      Serial.println("Nothing to do!");
+      state = ReceiveServer;
+    }
+    break;
+  }
+  case RegisterServer:
+  {
+    ServerSend("0", client);
+    registered = true;
+    state = ReceiveServer;
+    break;
+  }
+  case ResetState:
+  {
+    isMaster = false;
+    letterSet = false;
+    displayLetter = "?";
+    winState = false;
+    state = ReceiveServer;
+    break;
+  }
+  case LetterServer:
+  {
+    if (validLetter(displayLetter))
+    {
+      ServerSend("2:1", client);
+      letterSet = true;
+      invertDisplay(false, display);
+      dispLetter(displayLetter, display);
+    }
+    else
+    {
+      ServerSend("2:0", client);
+      letterSet = false;
+    }
+    state = ReceiveServer;
+    break;
+  }
+  case CheckServer:
+  {
+    String message = "3:" + checkWord;
+    ServerSend(message, client);
+    state = ReceiveServer;
+    break;
+  }
+  case ReceiveServer:
+  {
+    timeout = millis() + SERVER_RECEIVE_TIMEOUT;
+    while (millis() < timeout)
+    {
+      client = server.available();
+      if (client)
       {
-        disptext = "ConnectWiFi";
-        disp();
-        Serial.println("ConnectWiFi");
-        if (condition == 1) {
-          //disptext = "ConnectWiFi-ConnectWiFi";
-          //disp();
-          //Serial.println("ConnectWiFi-ConnectWiFi");
-          state = ConnectWiFi;
-        } else if (condition == 2) {
-          //disptext = "ConnectWiFi-ConnectServer";
-          //disp();
-          //Serial.println("ConnectWiFi-ConnectServer");
-          state = ConnectServer;
-        }
-        break;
-      }
-    case ConnectServer:
-      {
-        disptext = "ConnectServer";
-        disp();
-        Serial.println("ConnectServer");
-        if (condition == 3) {
-          //disptext = "ConnectServer-SendServer";
-          //disp();
-          //Serial.println("ConnectServer-SendServer");
-          state = SendServer;
-        } else if (condition == 4) {
-          //disptext = "ConnectServer-ConnectServer";
-          //disp();
-          //Serial.println("ConnectServer-ConnectServer");
-          state = ConnectServer;
-        }
-        break;
-      }
-    case SendServer:
-      {
-        disptext = "SendServer";
-        disp();
-        Serial.println("SendServer");
-        if (condition == 5) {
-          //disptext = "SendServer-RegisterServer";
-          //disp();
-          //Serial.println("SendServer-RegisterServer");
-          state = RegisterServer;
-        } else if (condition == 6) {
-          //disptext = "SendServer-LetterServer";
-          //disp();
-          //Serial.println("SendServer-LetterServer");
-          state = LetterServer;
-        } else if (condition == 7) {
-          //disptext = "SendServer-CheckServer";
-          //disp();
-          //Serial.println("SendServer-CheckServer");
-          state = CheckServer;
-        }
-        break;
-      }
-    case RegisterServer:
-      {
-        disptext = "RegisterServer";
-        disp();
-        Serial.println("RegisterServer");
-        //Serial.println("RegisterServer-ReciveServer");
-        state = ReciveServer;
-        break;
-      }
-    case LetterServer:
-      {
-        disptext = "LetterServer";
-        disp();
-        Serial.println("LetterServer");
-        //Serial.println("LetterServer-ReciveServer");
-        state = ReciveServer;
-        break;
-      }
-    case CheckServer:
-      {
-        disptext = "CheckServer";
-        disp();
-        Serial.println("CheckServer");
-        //Serial.println("CheckServer-ReciveServer");
-        state = ReciveServer;
-        break;
-      }
-    case ReciveServer:
-      {
-        disptext = "ReciveServer";
-        disp();
-        Serial.println("ReciveServer");
-        if (condition == 8) {
-          //disptext = "ReciveServer-SendServer";
-          //disp();
-          //Serial.println("ReciveServer-SendServer");
-          state = SendServer;
-        } else if (condition == 9) {
-          //disptext = "ReciveServer-IRBroadcastEW";
-          //disp();
-          //Serial.println("ReciveServer-IRBroadcastEW");
-          state = IRBroadcastEW;
-        } else if (condition == 32) {
-          //disptext = "ReciveServer-ReciveServer";
-          //disp();
-          //Serial.println("ReciveServer-ReciveServer");
-          state = ReciveServer;
-        } else if (condition == 34) {
-          //disptext = "ReciveServer-IRBroadcastEW";
-          //disp();
-          //Serial.println("ReciveServer-IRBroadcastEW");
-          state = IRBroadcastEW;
-        }
-        break;
-      }
-    case IRBroadcastEW:
-      {
-
-        Serial.println("IRBroadcastEW");
-        for (int i = 0; i < amountOfDirections; i++) {
-          mcp.digitalWrite(directionsSend[i], HIGH);
-          delay(500);
-          sendIR(whatToSend[i]);
-          mcp.digitalWrite(directionsSend[i], LOW);
-        }
-
-        break;
-      }
-    case IRListenEW:
-      {
-        int received = 0;
-        Serial.println("IRListenEW");
-
-
-        for (int i = 0; i < amountOfDirections; i++) {
-          mcp.digitalWrite(directionsRec[i], HIGH);
-          delay(500);
-          received = recIR();
-          mcp.digitalWrite(directionsRec[i], LOW);
-          if (received != 0) {
-            Serial.print("DirRec " + directionsStr[i] + " WhatRec: ");
-            Serial.println(intToStr(received));
+        Serial.print("");
+        while (client.connected())
+        {
+          if (client.available())
+          {
+            serverMessage = client.readStringUntil('\r');
+            Serial.println("");
+            Serial.print("Message received from server: ");
+            Serial.println(serverMessage);
+            serverMessageReceived = true;
           }
         }
-        /*
-          if (condition == 12) {
-          //disptext = "IRListenEW-IRListenEW";
-          //disp();
-          //Serial.println("IRListenEW-IRListenEW");
-          state = IRListenEW;
-          } else if (condition == 13) {
-          //disptext = "IRListenEW-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRListenEW-IRBroadcastEW");
-          state = IRBroadcastEW;
-          } else if (condition == 14) {
-          //disptext = "IRListenEW-IRTransmitDataE";
-          //disp();
-          //Serial.println("IRListenEW-IRTransmitDataE");
-          state = IRTransmitDataE;
-          } else if (condition == 15) {
-          //disptext = "IRListenEW-IRTransmitDataW";
-          //disp();
-          //Serial.println("IRListenEW-IRTransmitDataW");
-          state = IRTransmitDataW;
-          } else if (condition == 16) {
-          //disptext = "IRListenEW-IRReciveDataWE";
-          //disp();
-          //Serial.println("IRListenEW-IRReciveDataWE");
-          state = IRReciveDataWE;
+      }
+    }
+    if (serverMessageReceived)
+    {
+      String command = splitString(serverMessage, ':', 0);
+      String parameter = splitString(serverMessage, ':', 1);
+      if (command == "1")
+      {
+        displayLetter = parameter;
+        if (validLetter(parameter))
+        {
+          isMaster = true;       // <<<------ temp. for testing without IR!
+          state = ConnectServer; // <<<------ temp. for testing without IR!
+          //state = IRBroadcastEW;    // <<<------ actual path for code
+        }
+        else
+        {
+          state = ConnectServer;
+        }
+      }
+      else if (command == "4")
+      {
+        winState = parameter == "1";
+        if (winState)
+        {
+          invertDisplay(true, display);
+        }
+        state = ConnectServer; // <<<------ temp. for testing without IR!
+        //state = IRBroadcastEW;      // <<<------ actual path for code
+      }
+      serverMessageReceived = false;
+    }
+    else
+    {
+      state = ConnectServer;
+    }
+    break;
+  }
+  case IRBroadcastEW:
+  {
+    Serial.println("Starting Broadcast");
+    resetRole();
+
+    //int hex = 0x01;
+    int receivedAt = -1;
+    int received = -1;
+    int startTimeBroadcast = millis();
+    int endTimeBroadcast = startTimeBroadcast;
+
+    int randomNum = random(0, 4);
+
+    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
+    {
+      randomNum = random(0, 4);
+
+      for (int i = 0; i < amountOfDirectionsEW; i++)
+      {
+        // Turn on receiver.
+        turnOnReceiver(directionsRecEW[i]);
+
+        int startTimeDelay = millis();
+        int endTimeDelay = startTimeDelay;
+        while ((endTimeDelay - startTimeDelay) <= 500)
+        {
+          endTimeDelay = millis();
+        }
+
+        // Send at the direction.
+        Serial.print("Sending at: ");
+        Serial.println(directionsStrEW[i]);
+        if (i == 0)
+        {
+          turnOnSender(directionsSendEW[i]);
+          irsend.sendNEC(0xA, kNECBits, 1);
+          turnOffSender(directionsSendEW[i]);
+        }
+        else if (i == 1)
+        {
+          turnOnSender(directionsSendEW[i]);
+          irsend.sendNEC(0xB, kNECBits, 1);
+          turnOffSender(directionsSendEW[i]);
+        }
+
+        // Check to see if message is received at the same direction.
+        if (irrecv.decode(&results))
+        {
+          int startTimeRec = millis();
+          int endTimeRec = startTimeRec;
+
+          receivedAt = i;
+          while ((endTimeRec - startTimeRec) <= 1000)
+          {
+            received = recIR(irrecv, results, receivedAt);
+            delay(10);
+            establishRole(received, directionsStrEW[receivedAt]);
+
+            // Send IR same direction.
+            if (i == 0)
+            {
+              turnOnSender(directionsSendEW[i]);
+              irsend.sendNEC(0xA, kNECBits, 1);
+              turnOffSender(directionsSendEW[i]);
+            }
+            else if (i == 1)
+            {
+              turnOnSender(directionsSendEW[i]);
+              irsend.sendNEC(0xB, kNECBits, 1);
+              turnOffSender(directionsSendEW[i]);
+            }
+            //Send IR opposite direction.
+            turnOffSender(directionsSendEW[i]);
+            if (i == 0)
+            { // If just received at west, send east.
+              turnOnSender(directionsSendEW[1]);
+              sendIR(0xB, irsend);
+              turnOffSender(directionsSendEW[1]);
+            }
+            else if (i == 1)
+            { // If just received at east, send west.
+              turnOnSender(directionsSendEW[0]);
+              sendIR(0xA, irsend);
+              turnOffSender(directionsSendEW[0]);
+            }
+
+            if (received == 0xB || received == 0xA)
+            {
+              break;
+            }
+
+            endTimeRec = millis();
           }
-        */
-        break;
-      }
-    case IRTransmitDataE:
-      {
-        disptext = "IRTransmitDataE";
-        disp();
-        Serial.println("IRTransmitDataE");
-        if (condition == 17) {
-          //disptext = "IRTransmitDataE-ReciveServer";
-          //disp();
-          //Serial.println("IRTransmitDataE-ReciveServer");
-          state = ReciveServer;
-        } else if (condition == 18) {
-          //disptext = "IRTransmitDataE-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRTransmitDataE-IRBroadcastEW");
-          state = IRBroadcastEW;
-        } else if (condition == 19) {
-          //disptext = "IRTransmitDataE-IRReceiveDataE";
-          //disp();
-          //Serial.println("IRTransmitDataE-IRReceiveDataE");
-          state = IRReceiveDataE;
         }
-        break;
+        turnOffReceiver(directionsRecEW[i]);
       }
-    case IRReceiveDataE:
+
+      if (randomNum == 2)
       {
-        disptext = "IRReceiveDataE";
-        disp();
-        Serial.println("IRReceiveDataE");
-        if (condition == 20) {
-          //disptext = "IRReceiveDataE-SendServer";
-          //disp();
-          //Serial.println("IRReceiveDataE-SendServer");
-          state = SendServer;
-        } else if (condition == 21) {
-          //disptext = "IRReceiveDataE-IRReceiveDataE";
-          //disp();
-          //Serial.println("IRReceiveDataE-IRReceiveDataE");
-          state = IRReceiveDataE;
-        } else if (condition == 33) {
-          //disptext = "IRReceiveDataE-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRReceiveDataE-IRBroadcastEW");
-          state = IRBroadcastEW;
+        int startTimeSend = millis();
+        int endTimeSend = startTimeSend;
+
+        int randomSender = random(0, 2);
+        turnOnSender(directionsSendEW[randomSender]);
+        while ((endTimeSend - startTimeSend) <= 1000)
+        {
+          if (randomSender == 0)
+          {
+            irsend.sendNEC(0xA, kNECBits, 1);
+          }
+          else if (randomSender == 1)
+          {
+            irsend.sendNEC(0xB, kNECBits, 1);
+          }
+          delay(10);
+          endTimeSend = millis();
         }
-        break;
+        turnOffSender(directionsSendEW[randomSender]);
       }
-    case IRReciveDataWE:
+
+      delay(10);
+      endTimeBroadcast = millis();
+    }
+    printRole();
+    
+    if (role == "Master")
+    {
+      displayLetter = "M";
+      dispLetter(displayLetter, display);
+      //state = IRTransmitAndReceiveDataE;
+    }
+    else if (role == "End")
+    {
+      displayLetter = "E";
+      dispLetter(displayLetter, display);
+      //state = IRTransmitAndReceiveDataW;
+    }
+    else if (role == "Relay")
+    {
+      displayLetter = "R";
+      dispLetter(displayLetter, display);
+      //state = IRTransmitAndReceiveDataWE;
+    }
+    else if (role = "None")
+    {
+      displayLetter = "N";
+      dispLetter(displayLetter, display);
+      //state = IRBroadcastEW;
+    }
+    
+
+    state = IRBroadcastEW;
+    break;
+  }
+
+  case IRTransmitAndReceiveDataE:
+  {
+    Serial.println("IRTransmitAndReceiveDataE");
+    char letter = displayLetter.charAt(0);
+    int letterAsHex = (int)letter;
+    Serial.print("My letter: ");
+    Serial.println(letter);
+    int receivedAt = -1;
+    int received = -1;
+    int startTimeBroadcast = millis();
+    int endTimeBroadcast = startTimeBroadcast;
+
+    int randomNum = random(0, 4);
+
+    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
+    {
+      randomNum = random(0, 4);
+
+      // Turn on receiver.
+      turnOnReceiver(directionsRecEW[1]);
+
+      int startTimeDelay = millis();
+      int endTimeDelay = startTimeDelay;
+      while ((endTimeDelay - startTimeDelay) <= 500)
       {
-        disptext = "IRReciveDataWE";
-        disp();
-        Serial.println("IRReciveDataWE");
-        if (condition == 22) {
-          //disptext = "IRReciveDataWE-IRReciveDataWE";
-          //disp();
-          //Serial.println("IRReciveDataWE-IRReciveDataWE");
-          state = IRReciveDataWE;
-        } else if (condition == 23) {
-          //disptext = "IRReciveDataWE-IRTransmitDataE";
-          //disp();
-          //Serial.println("IRReciveDataWE-IRTransmitDataE");
-          state = IRTransmitDataE;
-        } else if (condition == 24) {
-          //disptext = "IRReciveDataWE-IRTransmitDataW";
-          //disp();
-          //Serial.println("IRReciveDataWE-IRTransmitDataW");
-          state = IRTransmitDataW;
-        } else if (condition == 25) {
-          //disptext = "IRReciveDataWE-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRReciveDataWE-IRBroadcastEW");
-          state = IRBroadcastEW;
-        }
-        break;
+        endTimeDelay = millis();
       }
-    case IRTransmitDataW:
+
+      // Send at the direction.
+      Serial.print("Sending at: ");
+      Serial.println(directionsStrEW[1]);
+
+      turnOnSender(directionsSendEW[1]);
+      irsend.sendNEC(letterAsHex, kNECBits, 1);
+      turnOffSender(directionsSendEW[1]);
+
+      // Check to see if message is received at the same direction.
+      if (irrecv.decode(&results))
       {
-        disptext = "IRTransmitDataW";
-        disp();
-        Serial.println("IRTransmitDataW");
-        if (condition == 26) {
-          //disptext = "IRTransmitDataW-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRTransmitDataW-IRBroadcastEW");
-          state = IRBroadcastEW;
-        } else if (condition == 27) {
-          //disptext = "IRTransmitDataW-IRReceiveDataW";
-          //disp();
-          //Serial.println("IRTransmitDataW-IRReceiveDataW");
-          state = IRReceiveDataW;
+        int startTimeRec = millis();
+        int endTimeRec = startTimeRec;
+
+        receivedAt = 1;
+        while ((endTimeRec - startTimeRec) <= 1000)
+        {
+          received = recIR(irrecv, results, receivedAt);
+          delay(10);
+          endTimeRec = millis();
         }
-        break;
       }
-    case IRReceiveDataW:
+      turnOffReceiver(directionsRecEW[1]);
+
+      if (randomNum == 2)
       {
-        disptext = "IRReceiveDataW";
-        disp();
-        Serial.println("IRReceiveDataW");
-        if (condition == 28) {
-          //disptext = "IRReceiveDataW-IRReceiveDataW";
-          //disp();
-          //Serial.println("IRReceiveDataW-IRReceiveDataW");
-          state = IRReceiveDataW;
-        } else if (condition == 29) {
-          //disptext = "IRReceiveDataW-ReciveServer";
-          //disp();
-          //Serial.println("IRReceiveDataW-ReciveServer");
-          state = ReciveServer;
-        } else if (condition == 30) {
-          //disptext = "IRReceiveDataW-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRReceiveDataW-IRBroadcastEW");
-          state = IRBroadcastEW;
-        } else if (condition == 31) {
-          //disptext = "IRReceiveDataW-IRBroadcastEW";
-          //disp();
-          //Serial.println("IRReceiveDataW-IRBroadcastEW");
-          state = IRBroadcastEW;
+        int startTimeSend = millis();
+        int endTimeSend = startTimeSend;
+
+        turnOnSender(directionsSendEW[1]);
+        while ((endTimeSend - startTimeSend) <= 1000)
+        {
+          irsend.sendNEC(letterAsHex, kNECBits, 1);
+          delay(10);
+          endTimeSend = millis();
         }
-        break;
+        turnOffSender(directionsSendEW[1]);
       }
+      Serial.print("Char received: ");
+      Serial.println(char(received));
+      delay(10);
+      endTimeBroadcast = millis();
+    }
+    state = IRBroadcastEW;
+    break;
+  }
+
+  case IRTransmitAndReceiveDataW:
+  {
+    Serial.println("IRTransmitAndReceiveDataW");
+    char letter = displayLetter.charAt(0);
+    int letterAsHex = (int)letter;
+    Serial.print("My letter: ");
+    Serial.println(letter);
+    int receivedAt = -1;
+    int received = -1;
+    int startTimeBroadcast = millis();
+    int endTimeBroadcast = startTimeBroadcast;
+
+    int randomNum = random(0, 4);
+
+    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
+    {
+      randomNum = random(0, 4);
+
+      // Turn on receiver.
+      turnOnReceiver(directionsRecEW[0]);
+
+      int startTimeDelay = millis();
+      int endTimeDelay = startTimeDelay;
+      while ((endTimeDelay - startTimeDelay) <= 500)
+      {
+        endTimeDelay = millis();
+      }
+
+      // Send at the direction.
+      Serial.print("Sending at: ");
+      Serial.println(directionsStrEW[0]);
+
+      turnOnSender(directionsSendEW[0]);
+      irsend.sendNEC(letterAsHex, kNECBits, 1);
+      turnOffSender(directionsSendEW[0]);
+
+      // Check to see if message is received at the same direction.
+      if (irrecv.decode(&results))
+      {
+        int startTimeRec = millis();
+        int endTimeRec = startTimeRec;
+
+        receivedAt = 0;
+        while ((endTimeRec - startTimeRec) <= 1000)
+        {
+          received = recIR(irrecv, results, receivedAt);
+          delay(10);
+          endTimeRec = millis();
+        }
+      }
+      turnOffReceiver(directionsRecEW[0]);
+
+      if (randomNum == 2)
+      {
+        int startTimeSend = millis();
+        int endTimeSend = startTimeSend;
+
+        turnOnSender(directionsSendEW[0]);
+        while ((endTimeSend - startTimeSend) <= 1000)
+        {
+          irsend.sendNEC(letterAsHex, kNECBits, 1);
+          delay(10);
+          endTimeSend = millis();
+        }
+        turnOffSender(directionsSendEW[0]);
+      }
+      Serial.print("Char received: ");
+      Serial.println(char(received));
+      delay(10);
+      endTimeBroadcast = millis();
+    }
+    state = IRBroadcastEW;
+    break;
+  }
+  case IRTransmitAndReceiveDataWE:
+  {
+    Serial.println("IRTransmitAndReceiveDataWE");
+
+    char letter = displayLetter.charAt(0);
+    int letterAsHex = (int)letter;
+    Serial.print("My letter: ");
+    Serial.println(letter);
+    Serial.print("My letter as int: ");
+    Serial.println(letterAsHex);
+    Serial.print("My letter again: ");
+    Serial.println(char(letterAsHex));
+    int receivedAt = -1;
+    int received = -1;
+    int startTimeBroadcast = millis();
+    int endTimeBroadcast = startTimeBroadcast;
+
+    int randomNum = random(0, 4);
+
+    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
+    {
+      randomNum = random(0, 4);
+
+      for (int i = 0; i < amountOfDirectionsEW; i++)
+      {
+        // Turn on receiver.
+        turnOnReceiver(directionsRecEW[i]);
+
+        int startTimeDelay = millis();
+        int endTimeDelay = startTimeDelay;
+        while ((endTimeDelay - startTimeDelay) <= 500)
+        {
+          endTimeDelay = millis();
+        }
+
+        // Send at the direction.
+        Serial.print("Sending at: ");
+        Serial.println(directionsStrEW[i]);
+
+        turnOnSender(directionsSendEW[i]);
+        irsend.sendNEC(letterAsHex, kNECBits, 1);
+        turnOffSender(directionsSendEW[i]);
+
+        // Check to see if message is received at the same direction.
+        if (irrecv.decode(&results))
+        {
+          int startTimeRec = millis();
+          int endTimeRec = startTimeRec;
+
+          receivedAt = i;
+          while ((endTimeRec - startTimeRec) <= 1000)
+          {
+            received = recIR(irrecv, results, receivedAt);
+            if (isLetter(received))
+            {
+              break;
+            }
+            delay(10);
+
+            if (i == 0)
+            { // If just received at west, send east.
+              turnOnSender(directionsSendEW[1]);
+              sendIR(letterAsHex, irsend);
+              turnOffSender(directionsSendEW[1]);
+            }
+            else if (i == 1)
+            { // If just received at east, send west.
+              turnOnSender(directionsSendEW[0]);
+              sendIR(letterAsHex, irsend);
+              turnOffSender(directionsSendEW[0]);
+            }
+
+            endTimeRec = millis();
+          }
+        }
+        turnOffReceiver(directionsRecEW[i]);
+      }
+
+      if (randomNum == 2)
+      {
+        int startTimeSend = millis();
+        int endTimeSend = startTimeSend;
+
+        int randomSender = random(0, 2);
+        turnOnSender(directionsSendEW[randomSender]);
+        while ((endTimeSend - startTimeSend) <= 1000)
+        {
+          irsend.sendNEC(letterAsHex, kNECBits, 1);
+          delay(10);
+          endTimeSend = millis();
+        }
+        turnOffSender(directionsSendEW[randomSender]);
+      }
+      Serial.print("Int received: ");
+      Serial.println(received);
+      Serial.print("Char received: ");
+      Serial.println(char(received));
+      delay(10);
+      endTimeBroadcast = millis();
+    }
+    state = IRBroadcastEW;
+    break;
+  }
+  }
+}
+
+void establishRole(uint32_t message, String direction)
+{
+  for (int i = 0; i < amountOfDirectionsEW; i++)
+  {
+    if (message == 0xB && direction == directionsStrEW[0]) // WEST.
+    {
+      neighbours[0] = 1;
+    }
+    else if (message == 0xA && direction == directionsStrEW[1]) // EAST
+    {
+      neighbours[2] = 1;
+    }
+    else
+    { // Nothing.
+    }
+  }
+  makeRole();
+}
+
+void resetRole()
+{
+  for (int i = 0; i < sizeOfNeighbours; i++)
+  {
+    neighbours[i] = 0;
+  }
+  isMaster = 0;
+  isRelay = 0;
+  isEnd = 0;
+}
+
+void makeRole()
+{
+  if (neighbours[0] == 1 && neighbours[2] == 0)
+  {
+    role = "End";
+  }
+  else if (neighbours[0] == 1 && neighbours[2] == 1)
+  {
+    role = "Relay";
+  }
+  else if (neighbours[0] == 0 && neighbours[2] == 1)
+  {
+    role = "Master";
+  }
+  else if (neighbours[0] == 0 && neighbours[2] == 0)
+  {
+    role = "None";
+  }
+}
+
+void printRole()
+{
+  Serial.print("Role: ");
+  Serial.print(role);
+  Serial.println(" established.");
+}
+
+/*
+void checkMessage(uint32_t message, String direction)
+{
+  Serial.println(message, HEX);
+  if (message == 0xFFE01F)
+  {
+    establishRole(message, direction);
+  }
+  
+  else if (isalpha(message))
+  {
+    Serial.println(char(message));
   }
 
 }
+*/
 
-String intToStr(int received) {
-  String returnStr = "";
+void turnOnReceiver(int receiver)
+{
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(receiver);
+  Wire.endTransmission();
+}
 
-  if(received == 0x00) {
-    returnStr = "WEST";
-  } else if(received == 0x01) {
-    returnStr = "SOUTH";
-  } else if(received == 0x02) {
-    returnStr = "EAST";
-  } else if(received == 0x03) {
-    returnStr = "NORTH";
-  } else {
-    returnStr = "0";
+void turnOffReceiver(int receiver)
+{
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(receiver);
+  Wire.endTransmission();
+}
+
+void turnOnSender(int sender)
+{
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(sender);
+  Wire.endTransmission();
+}
+
+void turnOffSender(int sender)
+{
+  Wire.beginTransmission(slaveAddress);
+  Wire.write(0x09);
+  Wire.write(sender);
+  Wire.endTransmission();
+}
+
+boolean isLetter(int received)
+{
+  char letter = (char)received;
+
+  if (isalpha(letter))
+  {
+    Serial.println("Is letter!");
+    return true;
   }
-
-  return returnStr;
+  else
+  {
+    Serial.println("Not letter!");
+    return false;
+  }
 }
