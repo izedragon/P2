@@ -1,4 +1,3 @@
-
 #include "utilities.h"
 
 String splitString(String data, char separator, int partIndex)

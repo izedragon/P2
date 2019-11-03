@@ -43,6 +43,9 @@
 #define OLED_RESET 0 // GPIO0
 Adafruit_SSD1306 display(OLED_RESET);
 
+// Hardcoded node ID in hexadecimal.
+
+const uint16_t ID = 0x4E32;
 // Variables related to the communication with the MCP23008 I/O Expander.
 
 int IODIR = 0x00;
@@ -70,12 +73,15 @@ enum States
   LetterServer,
   CheckServer,
   ReceiveServer,
-  IRBroadcastEW,
-  IRTransmitAndReceiveDataE,
-  IRTransmitAndReceiveDataWE,
-  IRTransmitAndReceiveDataW,
+  IRBroadcastReceiveEW,
+  IRReceiveDataEW,
+  IRReceiveDataE,
+  IRReceiveDataW,
+  IRTransmitDataE,
+  IRTransmitDataEW,
+  IRTransmitDataW,
 };
-enum States state = IRBroadcastEW;
+enum States state = IRBroadcastReceiveEW;
 
 // Variables related to the directions of sending and receiving.
 
@@ -89,6 +95,12 @@ int amountOfDirectionsEW = 2;           // 2
 int neighbours[3] = {0, 0, 0};
 int sizeOfNeighbours = 3;
 String role = "None";
+
+// Messages received at east and west.
+
+uint8_t lettersReceived[3] = {0, 0, 0};
+int lettersReceivedLength = 3;
+int fillLettersReceived = 0;
 
 // Variables related to the library which enables us to send and receive.
 
@@ -119,7 +131,7 @@ WiFiClient client;
 WiFiServer server(port);
 
 // Strings used for messages
-String displayLetter = "?";
+String displayLetter = "D";
 String checkWord = "S"; // <<<------ "A" temp. set for testing, should be empty
 String serverMessage = "";
 
@@ -156,15 +168,14 @@ void setup()
   Wire.endTransmission();
 
   // Server setup.
- // server.begin();
+  // server.begin();
 
   // Display setup.
-  
+
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C); // initialize with the I2C addr 0x3C (for the 64x48)
-  /*
   invertDisplay(false, display);
   dispLetter(displayLetter, display);
-  */
+
   // Initiate random generator.
 
   randomSeed(analogRead(0));
@@ -332,60 +343,103 @@ void statemachine()
     }
     break;
   }
-  case IRBroadcastEW:
+
+  /**
+   * In this state the node will Broadcasts it's presence at the same time that it's listening.
+   * This is accomplished by turning on the receiver corresponding to the direction of the broadcast
+   * and waiting for the interrupt to occur (500 milliseconds). If the interrupt occurs the node listens at the direction
+   * in which it had received an interrupt. 
+   * 
+   * Additional functionality:
+   * 1) Sends at east/west alternatingly for 2 seconds 1/4th of while loop executions.
+   * 2) Breaks out of a listening-loop if the 'correct' message is received. 
+   * 3) Sends once at the opposite direction of the received message direction. 
+   * 
+   * Written by: Daniel Abella with help from Michael Ong based on original code for sending an receiving created by: Daniel Abella, Fong To and Ahmed Abdulkader (and the author of the library IRremoteESP8266).
+   **/
+
+  case IRBroadcastReceiveEW:
   {
     Serial.println("Starting Broadcast");
     resetRole();
 
-    //int hex = 0x01;
     int receivedAt = -1;
-    int received = -1;
+    uint32_t received = -1;
     int startTimeBroadcast = millis();
     int endTimeBroadcast = startTimeBroadcast;
 
+    uint8_t west = 0x3C; // '3C' is the same as '<'
+    uint8_t east = 0x3E; // '3E' is the same as '>'
+
+    uint32_t messageToSendEast = (ID << 8) | (east);
+    uint32_t messageToSendWest = (ID << 8) | (west);
+
     int randomNum = random(0, 4);
 
-    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
+    // Run the code within this state (BroadcastReceiveEW) for 1 minute so that the nodes have a high probability of establishing their neighbours.
+
+    while ((endTimeBroadcast - startTimeBroadcast) <= 60000)
     {
       randomNum = random(0, 4);
 
       for (int i = 0; i < amountOfDirectionsEW; i++)
       {
         // Turn on receiver.
+        delay(10);
         turnOnReceiver(directionsRecEW[i]);
-
+        delay(10);
         int startTimeDelay = millis();
         int endTimeDelay = startTimeDelay;
+
+        // Delay (500 milliseconds) so that the receiver has a chance to receive a message and trigger the interrupt-routine.
         while ((endTimeDelay - startTimeDelay) <= 500)
         {
           endTimeDelay = millis();
         }
 
-        // Send at the direction.
+        // Send at the direction defined in the for loop (i = 0 -> West, i = 1 -> East).
         Serial.print("Sending at: ");
         Serial.println(directionsStrEW[i]);
         if (i == 0)
         {
+          delay(10);
           turnOnSender(directionsSendEW[i]);
-          irsend.sendNEC(0xA, kNECBits, 1);
+          delay(10);
+          irsend.sendNEC(messageToSendWest, kNECBits, 1);
+          delay(10);
           turnOffSender(directionsSendEW[i]);
+          delay(10);
         }
         else if (i == 1)
         {
+          delay(10);
           turnOnSender(directionsSendEW[i]);
-          irsend.sendNEC(0xB, kNECBits, 1);
+          delay(10);
+          irsend.sendNEC(messageToSendEast, kNECBits, 1);
+          delay(10);
           turnOffSender(directionsSendEW[i]);
+          delay(10);
         }
 
         // Check to see if message is received at the same direction.
         if (irrecv.decode(&results))
         {
+          Serial.print("Interrupt received: ");
+          serialPrintUint64(results.value, HEX);
+
           int startTimeRec = millis();
           int endTimeRec = startTimeRec;
 
           receivedAt = i;
-          while ((endTimeRec - startTimeRec) <= 1000)
+          while ((endTimeRec - startTimeRec) <= 2500) // Listen in the direction defined by the for loop (west->east, repeat inside encapsulating while loop).
           {
+            received = results.value;
+            if (receivedCorrect(received, directionsStrEW[i]))
+            {
+              establishRole(received, directionsStrEW[receivedAt]); // Eastablishes the role of the node based on the received message. 
+              break;                                                // This is done continually in the 1 minute loop so that the node has time to receive the correct
+            }                                                       // message at both directions(West/East). 
+            delay(10);
             received = recIR(irrecv, results, receivedAt);
             delay(10);
             establishRole(received, directionsStrEW[receivedAt]);
@@ -393,364 +447,202 @@ void statemachine()
             // Send IR same direction.
             if (i == 0)
             {
+              delay(10);
               turnOnSender(directionsSendEW[i]);
-              irsend.sendNEC(0xA, kNECBits, 1);
+              delay(10);
+              irsend.sendNEC(messageToSendWest, kNECBits, 1);
+              delay(10);
               turnOffSender(directionsSendEW[i]);
+              delay(10);
             }
             else if (i == 1)
             {
+              delay(10);
               turnOnSender(directionsSendEW[i]);
-              irsend.sendNEC(0xB, kNECBits, 1);
+              delay(10);
+              irsend.sendNEC(messageToSendEast, kNECBits, 1);
+              delay(10);
               turnOffSender(directionsSendEW[i]);
+              delay(10);
             }
             //Send IR opposite direction.
+            delay(10);
             turnOffSender(directionsSendEW[i]);
+            delay(10);
             if (i == 0)
             { // If just received at west, send east.
+              delay(10);
               turnOnSender(directionsSendEW[1]);
-              sendIR(0xB, irsend);
+              delay(10);
+              irsend.sendNEC(messageToSendEast, kNECBits, 1);
+              delay(10);
               turnOffSender(directionsSendEW[1]);
+              delay(10);
             }
             else if (i == 1)
             { // If just received at east, send west.
+              delay(10);
               turnOnSender(directionsSendEW[0]);
-              sendIR(0xA, irsend);
+              delay(10);
+              irsend.sendNEC(messageToSendWest, kNECBits, 1);
+              delay(10);
               turnOffSender(directionsSendEW[0]);
+              delay(10);
             }
-
-            if (received == 0xB || received == 0xA)
+            // If the correct message was received, stop listening.
+            if (receivedCorrect(received, directionsStrEW[i]))
             {
               break;
             }
 
             endTimeRec = millis();
           }
-        }
-        turnOffReceiver(directionsRecEW[i]);
-      }
+          delay(10);
+          turnOffReceiver(directionsRecEW[i]);
+          delay(10);
 
+          // Listen at the other direction (If listened at West previously -> listen at East and vice versa) for 2.5 seconds.
+          int listenDir = -1;
+          if (receivedAt == 0)
+          {
+            listenDir = 1;
+          }
+          else if (receivedAt == 1)
+          {
+            listenDir = 0;
+          }
+          delay(10);
+          turnOnReceiver(directionsRecEW[listenDir]);
+          delay(10);
+          int startListenOtherDir = millis();
+          int endListenOtherDir = startListenOtherDir;
+
+          while ((endListenOtherDir - startListenOtherDir) <= 2500)
+          {
+            delay(10);
+            received = recIR(irrecv, results, listenDir);
+            receivedAt = listenDir;
+            delay(10);
+            establishRole(received, directionsStrEW[listenDir]);
+            endListenOtherDir = millis();
+          }
+          delay(10);
+          turnOffReceiver(directionsRecEW[listenDir]);
+          delay(10);
+        }
+        delay(10);
+        turnOffReceiver(directionsRecEW[i]);
+        delay(10);
+      }
+      // If the random number generated is equal to 2 (1/4th probability) the node sends messages alternating between east and west for 2 seconds.
       if (randomNum == 2)
       {
         int startTimeSend = millis();
         int endTimeSend = startTimeSend;
 
         int randomSender = random(0, 2);
+        delay(10);
         turnOnSender(directionsSendEW[randomSender]);
-        while ((endTimeSend - startTimeSend) <= 1000)
+        delay(10);
+        while ((endTimeSend - startTimeSend) <= 2000)
         {
           if (randomSender == 0)
           {
-            irsend.sendNEC(0xA, kNECBits, 1);
+            delay(10);
+            irsend.sendNEC(messageToSendWest, kNECBits, 1);
+            delay(10);
           }
           else if (randomSender == 1)
           {
-            irsend.sendNEC(0xB, kNECBits, 1);
+            delay(10);
+            irsend.sendNEC(messageToSendEast, kNECBits, 1);
+            delay(10);
           }
           delay(10);
+          randomSender = (++randomSender) % 2;
           endTimeSend = millis();
         }
+        delay(10);
         turnOffSender(directionsSendEW[randomSender]);
+        delay(10);
       }
 
       delay(10);
       endTimeBroadcast = millis();
     }
-    printRole();
-    
+    Serial.println(role);
+    establishRole(received, directionsStrEW[receivedAt]);
+    Serial.println(role);
+
+    // Determines which state the node should transition to depending on its role.
+
     if (role == "Master")
     {
-      displayLetter = "M";
-      dispLetter(displayLetter, display);
-      //state = IRTransmitAndReceiveDataE;
-    }
-    else if (role == "End")
-    {
-      displayLetter = "E";
-      dispLetter(displayLetter, display);
-      //state = IRTransmitAndReceiveDataW;
+      state = IRTransmitDataE;
     }
     else if (role == "Relay")
     {
-      displayLetter = "R";
-      dispLetter(displayLetter, display);
-      //state = IRTransmitAndReceiveDataWE;
+      state = IRReceiveDataW;
     }
-    else if (role = "None")
+    else if (role == "End")
     {
-      displayLetter = "N";
-      dispLetter(displayLetter, display);
-      //state = IRBroadcastEW;
+      state = IRReceiveDataW;
     }
-    
-
-    state = IRBroadcastEW;
+    else if (role == "None")
+    {
+      state = IRBroadcastReceiveEW;
+    }
+    break;
+  }
+  case IRReceiveDataEW:
+  {
+    Serial.println("IRReceiveDataEW");
     break;
   }
 
-  case IRTransmitAndReceiveDataE:
+  case IRReceiveDataW:
   {
-    Serial.println("IRTransmitAndReceiveDataE");
-    char letter = displayLetter.charAt(0);
-    int letterAsHex = (int)letter;
-    Serial.print("My letter: ");
-    Serial.println(letter);
-    int receivedAt = -1;
-    int received = -1;
-    int startTimeBroadcast = millis();
-    int endTimeBroadcast = startTimeBroadcast;
-
-    int randomNum = random(0, 4);
-
-    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
-    {
-      randomNum = random(0, 4);
-
-      // Turn on receiver.
-      turnOnReceiver(directionsRecEW[1]);
-
-      int startTimeDelay = millis();
-      int endTimeDelay = startTimeDelay;
-      while ((endTimeDelay - startTimeDelay) <= 500)
-      {
-        endTimeDelay = millis();
-      }
-
-      // Send at the direction.
-      Serial.print("Sending at: ");
-      Serial.println(directionsStrEW[1]);
-
-      turnOnSender(directionsSendEW[1]);
-      irsend.sendNEC(letterAsHex, kNECBits, 1);
-      turnOffSender(directionsSendEW[1]);
-
-      // Check to see if message is received at the same direction.
-      if (irrecv.decode(&results))
-      {
-        int startTimeRec = millis();
-        int endTimeRec = startTimeRec;
-
-        receivedAt = 1;
-        while ((endTimeRec - startTimeRec) <= 1000)
-        {
-          received = recIR(irrecv, results, receivedAt);
-          delay(10);
-          endTimeRec = millis();
-        }
-      }
-      turnOffReceiver(directionsRecEW[1]);
-
-      if (randomNum == 2)
-      {
-        int startTimeSend = millis();
-        int endTimeSend = startTimeSend;
-
-        turnOnSender(directionsSendEW[1]);
-        while ((endTimeSend - startTimeSend) <= 1000)
-        {
-          irsend.sendNEC(letterAsHex, kNECBits, 1);
-          delay(10);
-          endTimeSend = millis();
-        }
-        turnOffSender(directionsSendEW[1]);
-      }
-      Serial.print("Char received: ");
-      Serial.println(char(received));
-      delay(10);
-      endTimeBroadcast = millis();
-    }
-    state = IRBroadcastEW;
+    Serial.println("IRREceiveDataW");
+    break;
+  }
+  case IRReceiveDataE:
+  {
+    Serial.println("IRReceiveDataE");
+    break;
+  }
+  case IRTransmitDataE:
+  {
+    Serial.println("IRTransmitDataE");
+    state = IRTransmitDataE;
     break;
   }
 
-  case IRTransmitAndReceiveDataW:
+  case IRTransmitDataW:
   {
-    Serial.println("IRTransmitAndReceiveDataW");
-    char letter = displayLetter.charAt(0);
-    int letterAsHex = (int)letter;
-    Serial.print("My letter: ");
-    Serial.println(letter);
-    int receivedAt = -1;
-    int received = -1;
-    int startTimeBroadcast = millis();
-    int endTimeBroadcast = startTimeBroadcast;
-
-    int randomNum = random(0, 4);
-
-    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
-    {
-      randomNum = random(0, 4);
-
-      // Turn on receiver.
-      turnOnReceiver(directionsRecEW[0]);
-
-      int startTimeDelay = millis();
-      int endTimeDelay = startTimeDelay;
-      while ((endTimeDelay - startTimeDelay) <= 500)
-      {
-        endTimeDelay = millis();
-      }
-
-      // Send at the direction.
-      Serial.print("Sending at: ");
-      Serial.println(directionsStrEW[0]);
-
-      turnOnSender(directionsSendEW[0]);
-      irsend.sendNEC(letterAsHex, kNECBits, 1);
-      turnOffSender(directionsSendEW[0]);
-
-      // Check to see if message is received at the same direction.
-      if (irrecv.decode(&results))
-      {
-        int startTimeRec = millis();
-        int endTimeRec = startTimeRec;
-
-        receivedAt = 0;
-        while ((endTimeRec - startTimeRec) <= 1000)
-        {
-          received = recIR(irrecv, results, receivedAt);
-          delay(10);
-          endTimeRec = millis();
-        }
-      }
-      turnOffReceiver(directionsRecEW[0]);
-
-      if (randomNum == 2)
-      {
-        int startTimeSend = millis();
-        int endTimeSend = startTimeSend;
-
-        turnOnSender(directionsSendEW[0]);
-        while ((endTimeSend - startTimeSend) <= 1000)
-        {
-          irsend.sendNEC(letterAsHex, kNECBits, 1);
-          delay(10);
-          endTimeSend = millis();
-        }
-        turnOffSender(directionsSendEW[0]);
-      }
-      Serial.print("Char received: ");
-      Serial.println(char(received));
-      delay(10);
-      endTimeBroadcast = millis();
-    }
-    state = IRBroadcastEW;
-    break;
-  }
-  case IRTransmitAndReceiveDataWE:
-  {
-    Serial.println("IRTransmitAndReceiveDataWE");
-
-    char letter = displayLetter.charAt(0);
-    int letterAsHex = (int)letter;
-    Serial.print("My letter: ");
-    Serial.println(letter);
-    Serial.print("My letter as int: ");
-    Serial.println(letterAsHex);
-    Serial.print("My letter again: ");
-    Serial.println(char(letterAsHex));
-    int receivedAt = -1;
-    int received = -1;
-    int startTimeBroadcast = millis();
-    int endTimeBroadcast = startTimeBroadcast;
-
-    int randomNum = random(0, 4);
-
-    while ((endTimeBroadcast - startTimeBroadcast) <= 15000)
-    {
-      randomNum = random(0, 4);
-
-      for (int i = 0; i < amountOfDirectionsEW; i++)
-      {
-        // Turn on receiver.
-        turnOnReceiver(directionsRecEW[i]);
-
-        int startTimeDelay = millis();
-        int endTimeDelay = startTimeDelay;
-        while ((endTimeDelay - startTimeDelay) <= 500)
-        {
-          endTimeDelay = millis();
-        }
-
-        // Send at the direction.
-        Serial.print("Sending at: ");
-        Serial.println(directionsStrEW[i]);
-
-        turnOnSender(directionsSendEW[i]);
-        irsend.sendNEC(letterAsHex, kNECBits, 1);
-        turnOffSender(directionsSendEW[i]);
-
-        // Check to see if message is received at the same direction.
-        if (irrecv.decode(&results))
-        {
-          int startTimeRec = millis();
-          int endTimeRec = startTimeRec;
-
-          receivedAt = i;
-          while ((endTimeRec - startTimeRec) <= 1000)
-          {
-            received = recIR(irrecv, results, receivedAt);
-            if (isLetter(received))
-            {
-              break;
-            }
-            delay(10);
-
-            if (i == 0)
-            { // If just received at west, send east.
-              turnOnSender(directionsSendEW[1]);
-              sendIR(letterAsHex, irsend);
-              turnOffSender(directionsSendEW[1]);
-            }
-            else if (i == 1)
-            { // If just received at east, send west.
-              turnOnSender(directionsSendEW[0]);
-              sendIR(letterAsHex, irsend);
-              turnOffSender(directionsSendEW[0]);
-            }
-
-            endTimeRec = millis();
-          }
-        }
-        turnOffReceiver(directionsRecEW[i]);
-      }
-
-      if (randomNum == 2)
-      {
-        int startTimeSend = millis();
-        int endTimeSend = startTimeSend;
-
-        int randomSender = random(0, 2);
-        turnOnSender(directionsSendEW[randomSender]);
-        while ((endTimeSend - startTimeSend) <= 1000)
-        {
-          irsend.sendNEC(letterAsHex, kNECBits, 1);
-          delay(10);
-          endTimeSend = millis();
-        }
-        turnOffSender(directionsSendEW[randomSender]);
-      }
-      Serial.print("Int received: ");
-      Serial.println(received);
-      Serial.print("Char received: ");
-      Serial.println(char(received));
-      delay(10);
-      endTimeBroadcast = millis();
-    }
-    state = IRBroadcastEW;
+    Serial.println("IRTransmiteDataW");
     break;
   }
   }
 }
 
+/**
+ * Sets the neighbours array which is defined as; {0,0,0} -> {neighbourWest, Itself, neighbourEast}
+ * A check is performed where the node has to receive the correct message at either listening direction as follows;
+ * 
+ * -- If it listens at West it needs to receive a message sent from East (contains > in the message).
+ * -- If it listens at East it needs to receive a message sent from West (contains < in the message).
+ * 
+ */
+
 void establishRole(uint32_t message, String direction)
 {
   for (int i = 0; i < amountOfDirectionsEW; i++)
   {
-    if (message == 0xB && direction == directionsStrEW[0]) // WEST.
+    if ((message & 0x000000FF) == 0x3E && direction == directionsStrEW[0]) // Listening at West, received from East.
     {
       neighbours[0] = 1;
     }
-    else if (message == 0xA && direction == directionsStrEW[1]) // EAST
+    else if ((message & 0x000000FF) == 0x3C && direction == directionsStrEW[1]) // Listening at East, received from West. 
     {
       neighbours[2] = 1;
     }
@@ -761,6 +653,9 @@ void establishRole(uint32_t message, String direction)
   makeRole();
 }
 
+/**
+ * Sets the neighbours array to its original state -> {0,0,0}
+ */
 void resetRole()
 {
   for (int i = 0; i < sizeOfNeighbours; i++)
@@ -772,22 +667,34 @@ void resetRole()
   isEnd = 0;
 }
 
+/**
+ * Sets the role of the node depending on what the neigbours array looks like;
+ * -- Example, {1,0,0} means a neighbour exists to the left only and as such the node is at the farthest right in the formation, a role called "End".
+ * 
+ * Also displays a circle only at West, only at East or at both directions depending on where the node has neigbours.
+ */
+
 void makeRole()
 {
-  if (neighbours[0] == 1 && neighbours[2] == 0)
+  if (neighbours[0] == 1 && neighbours[2] == 0) // Neighbour only at West. 
   {
+    showNeighbourCircle(display, directionsStrEW[0]);
     role = "End";
   }
-  else if (neighbours[0] == 1 && neighbours[2] == 1)
+  else if (neighbours[0] == 1 && neighbours[2] == 1) // Neigbbour at both East and West direction.
   {
+    showNeighbourCircle(display, directionsStrEW[0]);
+    showNeighbourCircle(display, directionsStrEW[1]);
     role = "Relay";
   }
-  else if (neighbours[0] == 0 && neighbours[2] == 1)
+  else if (neighbours[0] == 0 && neighbours[2] == 1) // Neighbour only at East.
   {
+    showNeighbourCircle(display, directionsStrEW[1]);
     role = "Master";
   }
-  else if (neighbours[0] == 0 && neighbours[2] == 0)
+  else if (neighbours[0] == 0 && neighbours[2] == 0) // No neighbours found.
   {
+    dispLetter(displayLetter, display);
     role = "None";
   }
 }
@@ -799,67 +706,110 @@ void printRole()
   Serial.println(" established.");
 }
 
-/*
-void checkMessage(uint32_t message, String direction)
-{
-  Serial.println(message, HEX);
-  if (message == 0xFFE01F)
-  {
-    establishRole(message, direction);
-  }
-  
-  else if (isalpha(message))
-  {
-    Serial.println(char(message));
-  }
-
-}
-*/
-
 void turnOnReceiver(int receiver)
 {
+  delay(10);
   Wire.beginTransmission(slaveAddress);
+  delay(10);
   Wire.write(0x09);
+  delay(10);
   Wire.write(receiver);
+  delay(10);
   Wire.endTransmission();
+  delay(10);
 }
 
 void turnOffReceiver(int receiver)
 {
+  delay(10);
   Wire.beginTransmission(slaveAddress);
+  delay(10);
   Wire.write(0x09);
+  delay(10);
   Wire.write(receiver);
+  delay(10);
   Wire.endTransmission();
+  delay(10);
 }
 
 void turnOnSender(int sender)
 {
+  delay(10);
   Wire.beginTransmission(slaveAddress);
+  delay(10);
   Wire.write(0x09);
+  delay(10);
   Wire.write(sender);
+  delay(10);
   Wire.endTransmission();
+  delay(10);
 }
 
 void turnOffSender(int sender)
 {
+  delay(10);
   Wire.beginTransmission(slaveAddress);
+  delay(10);
   Wire.write(0x09);
+  delay(10);
   Wire.write(sender);
+  delay(10);
   Wire.endTransmission();
+  delay(10);
 }
 
-boolean isLetter(int received)
-{
-  char letter = (char)received;
+// Used in previous versions where the role of the node was displayed on the screen instead of dots indicating at what direction neigbours have been found.
 
-  if (isalpha(letter))
+void displayRole()
+{
+  makeRole();
+  if (role == "Master")
   {
-    Serial.println("Is letter!");
-    return true;
+    displayLetter = "M";
+    dispLetter(displayLetter, display);
+    //state = IRTransmitAndReceiveDataE;
+  }
+  else if (role == "End")
+  {
+    displayLetter = "E";
+    dispLetter(displayLetter, display);
+    //state = IRTransmitAndReceiveDataW;
+  }
+  else if (role == "Relay")
+  {
+    displayLetter = "R";
+    dispLetter(displayLetter, display);
+    //state = IRTransmitAndReceiveDataWE;
+  }
+  else if (role = "None")
+  {
+    displayLetter = "N";
+    dispLetter(displayLetter, display);
+    //state = IRBroadcastEW;
+  }
+}
+
+/**
+ * Checks if the message at a certain direction is the one expected if the node is attempting to establish neighbours.
+ * 
+ * Example -- If the message is received at direction West then it should contain an indicator that is was sent from another nodes East (in this case '>')
+ * 
+ */
+boolean receivedCorrect(uint32_t message, String direction)
+{
+  boolean correct = false;
+  if ((message & 0x000000FF) == 0x3E && direction == directionsStrEW[0]) // // Listening at West, received from East.
+  {
+    correct = true;
+  }
+  else if ((message & 0x000000FF) == 0x3C && direction == directionsStrEW[1]) // // Listening at Eest, received from West.
+  {
+    correct = true;
   }
   else
   {
-    Serial.println("Not letter!");
-    return false;
+    // Do nothing.
   }
+  return false;
 }
+

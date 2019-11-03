@@ -1,3 +1,4 @@
+  
  #include "WiFi.h" 
 
 void WiFiConnect(const char* ssid, const char* pass) {
@@ -38,4 +39,3 @@ void ServerSend(String message, WiFiClient client) {
     Serial.println("Disconnected from server.");
   }
 }
-

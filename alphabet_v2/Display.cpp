@@ -30,3 +30,27 @@ void invertDisplay(boolean b, Adafruit_SSD1306& display) {
   display.invertDisplay(b);
   display.display();
 }
+
+/**
+ * Draws a circle indicating a neighbour has been found at the direction defined.
+ * Uses the screen-size and screen-width to determine which coordinates indicate the directions East and West. 
+ */
+void showNeighbourCircle(Adafruit_SSD1306& display, String direction) {
+  int screenWidth = 64;
+  int screenHeight = 48;
+
+  int x = 0;
+  int y = 0;
+  int r = 5;
+
+  if(direction == "EAST") {
+    x = (screenWidth*9)/10;
+    y = (screenHeight/2);
+  } else if(direction == "WEST") {
+    x = (screenWidth)/10;
+    y = (screenHeight/2);
+  }
+
+  display.fillCircle(x,y,r, WHITE);
+  display.display();
+}
